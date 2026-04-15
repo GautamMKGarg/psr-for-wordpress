@@ -106,6 +106,8 @@ PSR-7 Request → Build WP args → wp_remote_request() → Parse WP response �
 ```
 
 ### Outside WordPress
+Install dependency using `composer require rmccue/requests`.
+
 When `wp_remote_request()` is not available:
 
 ```

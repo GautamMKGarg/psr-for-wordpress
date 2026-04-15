@@ -46,8 +46,7 @@ Add to your project's `composer.json`:
 {
     "extra": {
         "discovery": {
-            "psr/http-client-implementation": "GautamMKGarg\\PsrForWordPress\\Http\\Psr18Client",
-            "psr/http-factory-implementation": "Nyholm\\Psr7\\Factory\\Psr17Factory"
+            "psr/http-client-implementation": "GautamMKGarg\\PsrForWordPress\\Http\\Psr18Client"
         }
     }
 }

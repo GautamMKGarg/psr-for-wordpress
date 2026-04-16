@@ -48,11 +48,14 @@ final class Psr18Client implements ClientInterface
      *
      * These match the WP_Http::request() $args keys.
      *
+     * PSR-18 : "If the HTTP Client receives a redirect, it MUST NOT automatically
+     * follow the redirect." — redirection must be 0 (disabled) by default.
+     *
      * @var array<string, mixed>
      */
     private const DEFAULTS = [
         'timeout'     => 10,   // seconds — WP default is 5, we use 10 for API calls
-        'redirection' => 5,    // max redirects
+        'redirection' => 0,    // PSR-18: must NOT follow redirects automatically
         'sslverify'   => true, // verify SSL certificates
     ];
 
@@ -118,16 +121,13 @@ final class Psr18Client implements ClientInterface
         }
         $args['headers'] = $headers;
 
-        // Body: only pass for methods that typically have a body.
-        // For GET, HEAD, OPTIONS — pass null. For others, always pass the body
-        // string (even if empty) so WP doesn't fall back to incorrect defaults.
-        $method = $args['method'];
-        if (in_array($method, ['GET', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'], true)) {
-            $args['body'] = null;
-        } else {
-            $bodyContent  = (string) $request->getBody();
-            $args['body'] = $bodyContent !== '' ? $bodyContent : null;
-        }
+        // PSR-7/PSR-18: any method can carry a body; forward it as-is.
+        // Do NOT filter out body based on HTTP method — the PSR-7 request already
+        // encodes the caller's intent and the integration test suite explicitly
+        // verifies that bodies (and matching Content-Length headers) are forwarded
+        // even for GET/HEAD/OPTIONS requests.
+        $bodyContent  = (string) $request->getBody();
+        $args['body'] = $bodyContent !== '' ? $bodyContent : null;
 
         return $args;
     }
@@ -166,12 +166,41 @@ final class Psr18Client implements ClientInterface
         $method  = $args['method'] ?? 'GET';
         $headers = $args['headers'] ?? [];
         $data    = $args['body'] ?? null;
+        $maxRedirects = (int) ($args['redirection'] ?? self::DEFAULTS['redirection']);
         $options = [
             'timeout'          => $args['timeout'] ?? self::DEFAULTS['timeout'],
-            'redirects'        => $args['redirection'] ?? self::DEFAULTS['redirection'],
+            'redirects'        => $maxRedirects,
             'verify'           => $args['sslverify'] ?? self::DEFAULTS['sslverify'],
-            'follow_redirects' => ($args['redirection'] ?? self::DEFAULTS['redirection']) > 0,
+            // PSR-18 : the client MUST NOT follow redirects automatically.
+            'follow_redirects' => $maxRedirects > 0,
         ];
+
+        // WpOrg\Requests defaults data_format to 'query' for DELETE (and GET/HEAD),
+        // which causes it to call http_build_query() on a raw string body, producing
+        // a TypeError. PSR-18 permits any method to carry a body, so we force
+        // 'body' format whenever body data is present.
+        if ($data !== null && $data !== '') {
+            $options['data_format'] = 'body';
+        }
+
+        // WpOrg\Requests\Transport\Curl hardcodes CURLOPT_NOBODY=true for HEAD
+        // requests, which silently discards the request body while preserving the
+        // Content-Length header. The server then waits for body bytes that never
+        // arrive and cURL times out (error 28). PSR-18 requires the client to
+        // forward whatever body the PSR-7 request carries, so we register a
+        // curl.before_send hook to un-set CURLOPT_NOBODY and re-attach the body.
+        if ($method === 'HEAD' && $data !== null && $data !== '') {
+            $hooks    = new \WpOrg\Requests\Hooks();
+            $bodyData = $data;
+            $hooks->register(
+                'curl.before_send',
+                static function (&$handle) use ($bodyData): void {
+                    curl_setopt($handle, CURLOPT_NOBODY, false);
+                    curl_setopt($handle, CURLOPT_POSTFIELDS, $bodyData);
+                }
+            );
+            $options['hooks'] = $hooks;
+        }
 
         try {
             $response = Requests::request($url, $headers, $data, $method, $options);
@@ -203,7 +232,13 @@ final class Psr18Client implements ClientInterface
         $reasonPhrase = (string) ($wpResponse['response']['message'] ?? '');
         $body         = (string) ($wpResponse['body'] ?? '');
 
-        $response = $this->getResponseFactory()->createResponse($statusCode, $reasonPhrase);
+        // When the reason phrase is empty (e.g. the WP response omits it), call
+        // createResponse() with one argument so PSR-17 factories that implement
+        // the "empty = use default" convention (e.g. Nyholm) fill in the standard
+        // phrase ("OK", "Bad Request", …) automatically.
+        $response = $reasonPhrase !== ''
+            ? $this->getResponseFactory()->createResponse($statusCode, $reasonPhrase)
+            : $this->getResponseFactory()->createResponse($statusCode);
         $response = $response->withBody($this->getStreamFactory()->createStream($body));
 
         // WordPress headers: CaseInsensitiveDictionary or array
@@ -226,9 +261,11 @@ final class Psr18Client implements ClientInterface
      */
     private function buildResponseFromRequests(\WpOrg\Requests\Response $requestsResponse): ResponseInterface
     {
+        // Pass only the status code so that PSR-17 factories that follow the
+        // "empty string = use default reason phrase" convention (e.g. Nyholm)
+        // fill in the standard phrase (OK, Not Found, …) automatically.
         $response = $this->getResponseFactory()->createResponse(
-            $requestsResponse->status_code,
-            ''
+            $requestsResponse->status_code
         );
         $response = $response->withBody(
             $this->getStreamFactory()->createStream($requestsResponse->body)

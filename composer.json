@@ -30,7 +30,8 @@
     "require-dev": {
         "phpunit/phpunit": "^10.0 || ^11.0",
         "php-http/httplug": "^2.0",
-        "php-http/discovery": "^1.14"
+        "php-http/discovery": "^1.14",
+        "php-http/client-integration-tests": "^4.0"
     },
     "provide": {
         "psr/http-client-implementation": "1.0"
@@ -56,6 +57,23 @@
         "allow-plugins": {
             "php-http/discovery": true
         }
+    },
+    "scripts": {
+        "test":         "phpunit",
+        "test:unit":    "phpunit --testsuite \"Unit Tests\"",
+        "test:integration": "phpunit --testsuite Integration",
+        "test:wp":      "phpunit -c phpunit-wp.xml.dist",
+        "test:all":     [
+            "@test",
+            "@test:wp"
+        ]
+    },
+    "scripts-descriptions": {
+        "test":             "Run unit tests + non-WP integration tests (sendViaRequests path)",
+        "test:unit":        "Run unit tests only",
+        "test:integration": "Run PSR-18 integration tests via sendViaRequests only",
+        "test:wp":          "Run PSR-18 integration tests via sendViaWordPress path (WP stubs)",
+        "test:all":         "Run every test suite: unit + integration (both code paths)"
     },
     "minimum-stability": "stable",
     "prefer-stable": true

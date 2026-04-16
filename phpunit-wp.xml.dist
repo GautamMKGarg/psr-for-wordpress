@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    PHPUnit configuration for the WordPress Integration test suite.
+
+    This configuration uses tests/wp-bootstrap.php, which defines
+    wp_remote_request(), is_wp_error(), and WP_Error stubs in the global
+    namespace before any test runs. That causes Psr18Client::sendRequest()
+    to take the sendViaWordPress() code path for every request.
+
+    Keep this file separate from phpunit.xml.dist. Merging both bootstraps
+    into one process would define the WP stubs for the non-WP suites as well,
+    forcing Psr18Client to use the WordPress path everywhere — including tests
+    designed to exercise sendViaRequests().
+
+    Usage:
+        vendor/bin/phpunit -c phpunit-wp.xml.dist
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/wp-bootstrap.php"
+         colors="true"
+         stopOnFailure="false">
+    <testsuites>
+        <testsuite name="WordPress Integration">
+            <file>tests/Http/Psr18ClientWpIntegrationTest.php</file>
+        </testsuite>
+    </testsuites>
+
+    <php>
+        <server name="TEST_SERVER" value="http://127.0.0.1:10000/server.php"/>
+    </php>
+
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+    </source>
+</phpunit>

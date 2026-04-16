@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
          stopOnFailure="false">
     <testsuites>
         <testsuite name="Unit Tests">
             <directory>tests</directory>
+            <exclude>tests/Http/Psr18ClientIntegrationTest.php</exclude>
+        </testsuite>
+        <testsuite name="Integration">
+            <file>tests/Http/Psr18ClientIntegrationTest.php</file>
         </testsuite>
     </testsuites>
+
+    <php>
+        <server name="TEST_SERVER" value="http://127.0.0.1:10000/server.php"/>
+    </php>
 
     <source>
         <include>

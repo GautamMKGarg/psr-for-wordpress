@@ -184,6 +184,31 @@ final class Psr18Client implements ClientInterface
      */
     private function sendViaWordPress(string $url, array $args, RequestInterface $request): ResponseInterface
     {
+        // WordPress's WP_Http hard-codes data_format='query' for GET and HEAD
+        // (class-wp-http.php line 384: "All non-GET/HEAD requests should put the
+        // arguments in the form body"). WpOrg\Requests then calls http_build_query()
+        // on the body value to append it to the URL — but http_build_query() requires
+        // array|object, so a raw JSON string like '[]' (from json_encode([])) throws
+        // a TypeError in PHP 8.
+        //
+        // WordPress exposes no public API to override data_format from outside WP_Http.
+        // For methods where this limitation applies and a non-empty body is present, we
+        // delegate to sendViaRequests() which calls WpOrg\Requests directly with an
+        // explicit data_format='body' — identical to what Guzzle 7 does (cURL directly,
+        // no method-based body filtering).
+        //
+        // This path is only taken for the rare case of body-carrying GET/HEAD/OPTIONS
+        // requests (e.g. Paystack's CompletePurchaseRequest sends GET with
+        // json_encode([]) = '[]'). All normal POST/PUT/PATCH/DELETE traffic continues
+        // through wp_remote_request() and benefits from WordPress proxy/SSL/filter
+        // handling as usual.
+        if (
+            !empty($args['body'])
+            && in_array($args['method'], ['GET', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE'], true)
+        ) {
+            return $this->sendViaRequests($url, $args, $request);
+        }
+
         /** @var array|\WP_Error $response */
         // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals
         $response = wp_remote_request($url, $args);

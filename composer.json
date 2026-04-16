@@ -31,7 +31,8 @@
         "phpunit/phpunit": "^10.0 || ^11.0",
         "php-http/httplug": "^2.0",
         "php-http/discovery": "^1.14",
-        "php-http/client-integration-tests": "^4.0"
+        "php-http/client-integration-tests": "^4.0",
+        "rmccue/requests": "^2.0"
     },
     "provide": {
         "psr/http-client-implementation": "1.0"

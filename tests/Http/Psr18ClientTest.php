@@ -133,4 +133,96 @@ class Psr18ClientTest extends TestCase
 
         $this->assertInstanceOf(Psr18Client::class, $client);
     }
+
+    // -------------------------------------------------------------------------
+    // PayPal Partner Attribution header
+    // -------------------------------------------------------------------------
+
+    /**
+     * Helper: call the private withVendorHeaders() method via reflection so we
+     * can inspect the resulting PSR-7 request without making a network call.
+     */
+    private function applyVendorHeaders(\Psr\Http\Message\RequestInterface $request): \Psr\Http\Message\RequestInterface
+    {
+        $method = new \ReflectionMethod(Psr18Client::class, 'withVendorHeaders');
+        $method->setAccessible(true);
+
+        return $method->invoke($this->client, $request);
+    }
+
+    /**
+     * @test
+     */
+    public function it_adds_paypal_attribution_header_for_paypal_com(): void
+    {
+        $request = $this->factory->createRequest('POST', 'https://paypal.com/v2/checkout/orders');
+        $result  = $this->applyVendorHeaders($request);
+
+        $this->assertSame(
+            'LogicBridgeTechnoMartLLP_SI',
+            $result->getHeaderLine('PayPal-Partner-Attribution-Id')
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function it_adds_paypal_attribution_header_for_api_subdomain(): void
+    {
+        $request = $this->factory->createRequest('POST', 'https://api-m.paypal.com/v2/checkout/orders');
+        $result  = $this->applyVendorHeaders($request);
+
+        $this->assertSame(
+            'LogicBridgeTechnoMartLLP_SI',
+            $result->getHeaderLine('PayPal-Partner-Attribution-Id')
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function it_adds_paypal_attribution_header_for_sandbox_subdomain(): void
+    {
+        $request = $this->factory->createRequest('POST', 'https://api-m.sandbox.paypal.com/v2/checkout/orders');
+        $result  = $this->applyVendorHeaders($request);
+
+        $this->assertSame(
+            'LogicBridgeTechnoMartLLP_SI',
+            $result->getHeaderLine('PayPal-Partner-Attribution-Id')
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_not_add_paypal_attribution_header_for_other_domains(): void
+    {
+        foreach (['https://notpaypal.com/api', 'https://example.com'] as $url) {
+            $request = $this->factory->createRequest('POST', $url);
+            $result  = $this->applyVendorHeaders($request);
+
+            $this->assertFalse(
+                $result->hasHeader('PayPal-Partner-Attribution-Id'),
+                "Header must NOT be injected for {$url}"
+            );
+        }
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_not_override_existing_paypal_attribution_header(): void
+    {
+        $request = $this->factory
+            ->createRequest('POST', 'https://api.paypal.com/v2/checkout/orders')
+            ->withHeader('PayPal-Partner-Attribution-Id', 'CallerProvidedValue');
+
+        $result = $this->applyVendorHeaders($request);
+
+        $this->assertSame(
+            'CallerProvidedValue',
+            $result->getHeaderLine('PayPal-Partner-Attribution-Id'),
+            'Caller-supplied header must not be overridden'
+        );
+    }
 }

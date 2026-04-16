@@ -44,11 +44,24 @@ use WpOrg\Requests\Requests;
 final class Psr18Client implements ClientInterface
 {
     /**
+     * PayPal Partner Attribution ID (BN code) injected automatically on every
+     * request whose host is paypal.com or any subdomain (e.g. api.paypal.com,
+     * api-m.sandbox.paypal.com).
+     *
+     * The header is only added when the caller has not already set it, so
+     * callers can override it if needed.
+     *
+     * @see https://developer.paypal.com/api/rest/requests/#link-httprequestheaders
+     */
+    private const PAYPAL_ATTRIBUTION_HEADER = 'PayPal-Partner-Attribution-Id';
+    private const PAYPAL_ATTRIBUTION_ID     = 'LogicBridgeTechnoMartLLP_SI';
+
+    /**
      * Default request options for the WordPress HTTP API.
      *
      * These match the WP_Http::request() $args keys.
      *
-     * PSR-18 : "If the HTTP Client receives a redirect, it MUST NOT automatically
+     * PSR-18: "If the HTTP Client receives a redirect, it MUST NOT automatically
      * follow the redirect." — redirection must be 0 (disabled) by default.
      *
      * @var array<string, mixed>
@@ -92,7 +105,8 @@ final class Psr18Client implements ClientInterface
             );
         }
 
-        $args = $this->buildRequestArgs($request);
+        $request = $this->withVendorHeaders($request);
+        $args    = $this->buildRequestArgs($request);
 
         if (function_exists('wp_remote_request')) {
             return $this->sendViaWordPress($url, $args, $request);
@@ -130,6 +144,36 @@ final class Psr18Client implements ClientInterface
         $args['body'] = $bodyContent !== '' ? $bodyContent : null;
 
         return $args;
+    }
+
+    /**
+     * Injects vendor-required headers that must be present on requests to
+     * specific third-party APIs.
+     *
+     * Currently handles:
+     *     PayPal - adds PayPal-Partner-Attribution-Id (BN code) on every
+     *     request to paypal.com or any subdomain (api.paypal.com,
+     *     api-m.sandbox.paypal.com, …).  The header is skipped when the
+     *     caller has already supplied it.
+     *
+     * The method operates on the immutable PSR-7 request and returns a new
+     * instance; the original request passed to sendRequest() is never mutated.
+     */
+    private function withVendorHeaders(RequestInterface $request): RequestInterface
+    {
+        $host = strtolower($request->getUri()->getHost());
+
+        if (
+            ($host === 'paypal.com' || str_ends_with($host, '.paypal.com'))
+            && !$request->hasHeader(self::PAYPAL_ATTRIBUTION_HEADER)
+        ) {
+            $request = $request->withHeader(
+                self::PAYPAL_ATTRIBUTION_HEADER,
+                self::PAYPAL_ATTRIBUTION_ID
+            );
+        }
+
+        return $request;
     }
 
     /**
